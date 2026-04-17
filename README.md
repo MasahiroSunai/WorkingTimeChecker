@@ -25,7 +25,8 @@ WorkingTimeChecker/
 ├─ config/
 │   ├─ .env                  # 秘密情報（Git 管理しない）
 │   ├─ .env.example          # .env のテンプレート
-│   └─ config.yaml           # 各種設定（Git 管理対象）
+│   ├─ config.yaml           # 各種設定（Git 管理しない）
+│   └─ config.example.yaml   # 各種設定 のテンプレート
 │
 ├─ ConfluenceDownload.py
 ├─ WebAttendanceDownload.py
@@ -184,6 +185,7 @@ excel:
 ```bash
 copy config\config.example.yaml config\config.yaml
 ```
+⚠ config.yaml は **Git 管理対象外**です。
 
 ---
 
