@@ -1,0 +1,87 @@
+# ======================
+# 共通設定
+# ======================
+system:
+  encoding: utf-8
+  timezone: Asia/Tokyo
+  toAddress: "your.name@example.com"   # 通知メール送信先
+  target_month: auto                   # auto または YYYY-MM（例: 2026-04）
+
+# ======================
+# Confluence
+# ======================
+confluence:
+  dndev:
+    url: https://your.confluence.example/wiki
+    download_page_id: 123456789        # 添付ダウンロード元ページID
+    upload_page_id: 987654321          # 結果出力先ページID
+    cert_dir: C:/path/to/confluence/cert
+  geniie:
+    url: https://wiki.example.net
+    download_page_id: 111111111
+    upload_page_id: 222222222
+    # geniie 側は証明書不要な場合あり
+
+# ======================
+# File / Path
+# ======================
+paths:
+  # ダウンロード先ディレクトリ（年月は自動展開）
+  workload_download_dir: //server/share/path/{YYYY}_{MM}
+
+  # 工数集計 Excel
+  workload_aggregate_file: //server/share/path/_manage/工数集計_{YY}{MM}.xlsm
+
+  # Web勤怠 CSV
+  web_attendance_file: //server/share/path/_manage/Web勤怠_{YY}{MM}.csv
+
+  # 社員マスタ
+  member_file: //server/share/path/_manage/MemberNameList_{YY}{MM}.csv
+
+  # ワーク対応表
+  work_map_file: //server/share/path/_manage/ワーク対応_{YY}{MM}.csv
+
+# ======================
+# Apps (Web勤怠)
+# ======================
+apps:
+  base_url: https://appsfs.example.com
+  filter_id: YOUR_FILTER_ID
+  csv_suffix: "?csvsetup=1"
+
+# ======================
+# Rocket.Chat
+# ======================
+rocketchat:
+  url: https://rc.example.net
+  room: your-room-name   # 通知先ルーム名
+
+# ======================
+# Excel
+# ======================
+excel:
+  macros:
+    - "工数管理表読み込み"
+    # - "工数表_読み込み.工数管理表読み込み"  # 必要に応じて追加
+
+# ======================
+# Selenium（Apps操作用）
+# ======================
+# Web勤怠画面の構造に依存する要素定義
+# 画面変更があった場合は、コードではなくここを修正する
+selenium:
+  login:
+    username_input: "//input[@id='username']"
+    password_input: "//input[@id='password']"
+    login_button: "//input[@value='ログイン']"
+
+  totp:
+    input: "//input[@id='tc']"
+    submit_button: "//input[@value=' 検証 ']"
+
+  export:
+    encoding_select: "//select[@id='enc']"
+    encoding_value: "MS932"
+    format_select: "//select[@id='xf']"
+    format_value: "localecsv"
+    export_button: "//input[@value='エクスポート']"

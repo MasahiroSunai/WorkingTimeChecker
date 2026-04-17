@@ -43,7 +43,7 @@ def wait_for_download(tmp_download_dir: str, timeout_second: int = 60) -> str:
         time.sleep(1)
     raise Exception("ダウンロードに失敗しました。")
 
-def download_attendance(url, username, password, secret_key):
+def download_attendance(config, username, password, secret_key):
     # Initialize TOTP
     totp_generator = totp.Totp(secret_key)
 
@@ -70,35 +70,37 @@ def download_attendance(url, username, password, secret_key):
     # ------ ChromeDriver の起動 ------
     driver = webdriver.Chrome(service=service, options=options)
 
+    url = f'{config["apps"]["base_url"]}/{config["apps"]["filter_id"]}{config["apps"]["csv_suffix"]}'
+    sel = config["selenium"]
 
     try:
         # Navigate to the login page
         driver.get(url)
 
         # Find the username and password fields and enter the credentials
-        driver.find_element(By.XPATH, "//input[@id='username']").send_keys(username)
-        driver.find_element(By.XPATH, "//input[@id='password']").send_keys(password)
+        driver.find_element(By.XPATH, sel["login"]["username_input"]).send_keys(username)
+        driver.find_element(By.XPATH, sel["login"]["password_input"]).send_keys(password)
 
-        driver.find_element(By.XPATH, "//input[@value='ログイン']").click()
+        driver.find_element(By.XPATH, sel["login"]["login_button"]).click()
 
         # Wait for the page to load
         driver.implicitly_wait(2)  # Wait for elements to load
 
         # Find the TOTP field and enter the generated TOTP code
         totp_code = totp_generator.generate_totp()
-        driver.find_element(By.XPATH, "//input[@id='tc']").send_keys(totp_code)
+        driver.find_element(By.XPATH, sel["totp"]["input"]).send_keys(totp_code)
 
         # Submit the form
-        driver.find_element(By.XPATH, "//input[@value=' 検証 ']").click()
+        driver.find_element(By.XPATH, sel["totp"]["submit_button"]).click()
 
         # Wait for the page to load and download attendance
         driver.implicitly_wait(2)  # Wait for elements to load
 
-        Select(driver.find_element(By.XPATH, "//select[@id='enc']")).select_by_value("MS932")
-        Select(driver.find_element(By.XPATH, "//select[@id='xf']")).select_by_value("localecsv")
+        Select(driver.find_element(By.XPATH, sel["export"]["encoding_select"])).select_by_value(sel["export"]["encoding_value"])
+        Select(driver.find_element(By.XPATH, sel["export"]["format_select"])).select_by_value(sel["export"]["format_value"])
 
         driver.implicitly_wait(1)
-        driver.find_element(By.XPATH, "//input[@value='エクスポート']").click()
+        driver.find_element(By.XPATH, sel["export"]["export_button"]).click()
 
         wait_for_download(tmp_download_dir)
 
@@ -129,11 +131,10 @@ def main():
     if not secret_key:
         raise RuntimeError("TOTP Secret not found")
     
-    apps_url = f'{config["apps"]["base_url"]}/{config["apps"]["filter_id"]}{config["apps"]["csv_suffix"]}'
     vars = resolve_target_month(config)
     csvPath = expand_path(config["paths"]["web_attendance_file"], vars)
 
-    shutil.move(download_attendance(apps_url, username, password, secret_key), csvPath)
+    shutil.move(download_attendance(config, username, password, secret_key), csvPath)
 
 if __name__ == "__main__":
     main()

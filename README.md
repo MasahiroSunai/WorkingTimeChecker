@@ -130,6 +130,7 @@ pip install -r requirements.txt
 ```
 - Python 実行前に一度だけ実施してください
 - Chrome がインストールされている必要があります（Web 勤怠取得用）
+- 必要に応じて `pip freeze > requirements.frozen.txt` により動作確認済みの環境を固定できます。
 
 ---
 ### 2. .env の設定
@@ -173,6 +174,16 @@ excel:
 ```
 - 上から順に実行を試み、成功したものを採用
 - マクロは Public / 引数なし で定義されている必要があります
+
+
+### config.yaml について
+
+本リポジトリには `config.example.yaml` を同梱しています。  
+これをコピーして `config.yaml` を作成し、各環境に合わせてパスや ID を設定してください。
+
+```bash
+copy config\config.example.yaml config\config.yaml
+```
 
 ---
 
@@ -258,3 +269,4 @@ excel:
 - 処理ステップ選択実行対応（From / To / Only）
 - Excel マクロ名の外部定義対応
 - Rocket.Chat 通知統合
+- SeleniumのXPATHをconfigファイルに移動
