@@ -21,6 +21,32 @@ $envFile   = Join-Path $configDir ".env"
 $configYml = Join-Path $configDir "config.yaml"
 
 # -------------------------------------
+# ログ設定
+# -------------------------------------
+$logDir = Join-Path $rootDir "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+$timestamp = Get-Date -Format "yyyyMMdd"
+$logFile = Join-Path $logDir "run_$timestamp.log"
+
+Start-Transcript -Path $logFile -Append
+
+
+# -------------------------------------
+# ログローテーション（7日超過分を削除）
+# -------------------------------------
+if (Test-Path $logDir) {
+    Write-Host ">> 古いログを削除します（7日超過）"
+
+    Get-ChildItem $logDir -File |
+        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
+        ForEach-Object {
+            Write-Host "削除: $($_.FullName)"
+            Remove-Item $_.FullName -Force
+        }
+}
+
+# -------------------------------------
 # 1. .env 読み込み
 # -------------------------------------
 if (-not (Test-Path $envFile)) {
@@ -114,19 +140,7 @@ $Steps = @(
     },
     @{
         Name   = "PostRocketChat"
-        Action = {
-            Write-Host ">> 実行: PostRocketChatMessage.py"
-
-            python "$rootDir\PostRocketChatMessage.py" `
-                --config "$configYml" `
-                --message "@all`n工数表⇔Web勤怠チェックが完了しました。Confluence を確認してください。"
-
-            if ($LASTEXITCODE -ne 0) {
-                throw "PostRocketChatMessage.py の実行に失敗しました"
-            }
-
-            Write-Host "[OK] 完了: PostRocketChatMessage.py"
-        }
+        Action = { Run-Python "PostRocketChatMessage.py" }
     }
 )
 
@@ -172,4 +186,7 @@ try {
 catch {
     Write-Error "[NG] エラー発生: $_"
     exit 1
+}
+finally {
+    Stop-Transcript
 }

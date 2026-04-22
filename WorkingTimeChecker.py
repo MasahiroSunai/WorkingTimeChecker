@@ -10,10 +10,12 @@ import sys
 import argparse
 from atlassian import Confluence
 from typing import Dict, Set, Optional
-from config_loader import load_config
-from month_utils import resolve_target_month
-from path_utils import expand_path
+from utils.config_loader import load_config
+from utils.month_utils import resolve_target_month
+from utils.path_utils import expand_path
+from utils.logger_utils import setup_logger
 
+logger = setup_logger("WorkingTimeChecker")
 
 # 各種辞書型およびセットを初期化
 dicWorkLoad2WebAttendance: Dict[str, str] = {}
@@ -40,11 +42,11 @@ def read_check_member(file_path: str):
                     employee_id_name = f"{row['社員番号']}-{row['名前']}"
                     isLocalTaskCheck = row['社内工数対象']
                     dicCheckMember[employee_id_name] = (isLocalTaskCheck == 'TRUE')
-        print(f"Successfully read check member from {file_path}")
+        logger.info(f"Successfully read check member from {file_path}")
     except FileNotFoundError:
-        print(f"Error: The file {file_path} was not found.")
+        logger.error(f"Error: The file {file_path} was not found.")
     except Exception as e:
-        print(f"An error occurred while reading the file: {e}")
+        logger.exception(f"An error occurred while reading the file: {e}")
 
 def read_working_map(file_path: str):
     """ワークの対応付けをCSVファイルから読み込む"""
@@ -271,122 +273,153 @@ def build_attachment_links(files: list[str]) -> str:
 
 def main():
     """メイン処理"""
-    # コマンドライン引数の解析
-    args = parse_args()
+    logger.info("WorkingTimeChecker start")
 
-    # ---------- config 読み込み ----------
-    config = load_config(args.config)
+    try:
+        # コマンドライン引数の解析
+        args = parse_args()
 
-    vars = resolve_target_month(config)
-    paths = config["paths"]
-    confl_conf = config["confluence"]
+        # ---------- config 読み込み ----------
+        config = load_config(args.config)
 
-    # ---------- ファイルパス ----------
-    member_file = expand_path(paths["member_file"], vars)
-    workmap_file = expand_path(paths["work_map_file"], vars)
-    workload_file = expand_path(paths["workload_aggregate_file"], vars)
-    web_attendance_file = expand_path(paths["web_attendance_file"], vars)
+        vars = resolve_target_month(config)
+        paths = config["paths"]
+        confl_conf = config["confluence"]
+        dry_run = config.get("system", {}).get("dry_run", False)
+        logger.info(f"dry_run={dry_run}")
 
-    # ---------- Confluence ----------
-    confluence_url = confl_conf["dndev"]["url"]
-    target_page_id = confl_conf["dndev"]["upload_page_id"]
-    cert_dir = confl_conf["dndev"]["cert_dir"]
+        # ---------- ファイルパス ----------
+        member_file = expand_path(paths["member_file"], vars)
+        workmap_file = expand_path(paths["work_map_file"], vars)
+        workload_file = expand_path(paths["workload_aggregate_file"], vars)
+        web_attendance_file = expand_path(paths["web_attendance_file"], vars)
 
-    # ---------- Mail ----------
-    to_mail = config["system"].get("toAddress")
+        # ---------- Confluence ----------
+        confluence_url = confl_conf["dndev"]["url"]
+        target_page_id = confl_conf["dndev"]["upload_page_id"]
+        cert_dir = confl_conf["dndev"]["cert_dir"]
 
-    # ---------- 認証情報 (.env) ----------
-    aws_id = os.environ.get("DNDEV_AWS_ID")
-    aws_password = os.environ.get("DNDEV_AWS_PASSWORD")
+        # ---------- Mail ----------
+        to_mail = config["system"].get("toAddress")
 
-    if not aws_id or not aws_password:
-        raise RuntimeError("DNDEV_AWS_ID / DNDEV_AWS_PASSWORD が環境変数にありません")
+        # ---------- 認証情報 (.env) ----------
+        aws_id = os.environ.get("DNDEV_AWS_ID")
+        aws_password = os.environ.get("DNDEV_AWS_PASSWORD")
 
-    # 各ファイルの読み込み
-    read_check_member(member_file)
-    read_working_map(workmap_file)
-    read_working_load(workload_file)    
-    read_web_attendance(web_attendance_file)
-    
-    # 不整合チェック
-    check_work_load_to_web_attendance()
-    check_web_attendance_to_work_load()
-    dfOutWorkDayMismatch = check_web_attendance_work_day(web_attendance_file)
+        if not aws_id or not aws_password:
+            raise RuntimeError("DNDEV_AWS_ID / DNDEV_AWS_PASSWORD が環境変数にありません")
 
-    # ここで添付予定ファイル名のリンクブロックを作る
-    files_to_attach = [workload_file, web_attendance_file, workmap_file, member_file]
-    attachment_links_block = build_attachment_links(files_to_attach)
+        # 各ファイルの読み込み
+        read_check_member(member_file)
+        read_working_map(workmap_file)
+        read_working_load(workload_file)    
+        read_web_attendance(web_attendance_file)
+        
+        # 不整合チェック
+        check_work_load_to_web_attendance()
+        check_web_attendance_to_work_load()
+        dfOutWorkDayMismatch = check_web_attendance_work_day(web_attendance_file)
 
-    # 結果をHTMLに変換
-    html_body = """
-    <style>
-    table {border-collapse: collapse;}
-    th, td {border: 1px solid #ccc; padding: 8px; text-align: left;}
-    th {background-color: #f2f2f2;}
-    </style>
-    """
-    html_body += "<h3>※Web勤怠はAppsから取得のため前日又は前々日入力データです</h3>"
-    html_body += f"<h2>工数表⇒Web勤怠の不整合チェック結果</h2>"
-    html_body += dfOutWorkLoad.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
-    html_body += "<h2>Web勤怠⇒工数表の不整合チェック結果</h2>"
-    html_body += dfOutWebAttendance.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
-    html_body += "<h2>Web勤怠の勤務日とワーク開始・完了予定日の不整合チェック結果</h2>"
-    if dfOutWorkDayMismatch is not None:
-        html_body += dfOutWorkDayMismatch.sort_values(['社員番号', '勤務日']).to_html(index=False, escape=False)
-    else:
-        html_body += "<p>不整合無し</p>"
-    html_body += "<h2>Web勤怠：社内工数で備考未入力の一覧(社内工数チェック対象者のみ)</h2>"
-    if dfLocalTaskAndNoNote is None or dfLocalTaskAndNoNote.empty:
-        html_body += "<p>該当無し</p>"
-    else:
-        html_body += dfLocalTaskAndNoNote.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
-    html_body += "<h2>最終勤務入力日</h2>"
-    html_body += dfOutLastDay.sort_values(['社員番号']).to_html(index=False, escape=False)
-    html_body += "<h2>チェック対象メンバー</h2>"
-    html_body += pd.DataFrame(list(dicCheckMember.items()), columns=['社員番号-名前', '社内工数対象']).sort_values(['社員番号-名前']).to_html(index=False, escape=False)
-    html_body += "<h2>添付ファイル</h2>"
-    html_body += attachment_links_block
+        # ここで添付予定ファイル名のリンクブロックを作る
+        files_to_attach = [workload_file, web_attendance_file, workmap_file, member_file]
+        attachment_links_block = build_attachment_links(files_to_attach)
 
-    # メール送信
-    if to_mail:
-        send_mail(
-            to_address=to_mail,
-            subject="【自動送信】【PXT連絡】工数表⇔Web勤怠相違",
-            html_body=html_body
-        )
+        # 結果をHTMLに変換
+        html_body = """
+        <style>
+        table {border-collapse: collapse;}
+        th, td {border: 1px solid #ccc; padding: 8px; text-align: left;}
+        th {background-color: #f2f2f2;}
+        </style>
+        """
+        html_body += "<h3>※Web勤怠はAppsから取得のため前日又は前々日入力データです</h3>"
+        html_body += f"<h2>工数表⇒Web勤怠の不整合チェック結果</h2>"
+        html_body += dfOutWorkLoad.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
+        html_body += "<h2>Web勤怠⇒工数表の不整合チェック結果</h2>"
+        html_body += dfOutWebAttendance.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
+        html_body += "<h2>Web勤怠の勤務日とワーク開始・完了予定日の不整合チェック結果</h2>"
+        if dfOutWorkDayMismatch is not None:
+            html_body += dfOutWorkDayMismatch.sort_values(['社員番号', '勤務日']).to_html(index=False, escape=False)
+        else:
+            html_body += "<p>不整合無し</p>"
+        html_body += "<h2>Web勤怠：社内工数で備考未入力の一覧(社内工数チェック対象者のみ)</h2>"
+        if dfLocalTaskAndNoNote is None or dfLocalTaskAndNoNote.empty:
+            html_body += "<p>該当無し</p>"
+        else:
+            html_body += dfLocalTaskAndNoNote.sort_values(['社員番号', '日付']).to_html(index=False, escape=False)
+        html_body += "<h2>最終勤務入力日</h2>"
+        html_body += dfOutLastDay.sort_values(['社員番号']).to_html(index=False, escape=False)
+        html_body += "<h2>チェック対象メンバー</h2>"
+        html_body += pd.DataFrame(list(dicCheckMember.items()), columns=['社員番号-名前', '社内工数対象']).sort_values(['社員番号-名前']).to_html(index=False, escape=False)
+        html_body += "<h2>添付ファイル</h2>"
+        html_body += attachment_links_block
 
-    certkeypath = os.path.join(cert_dir, 'client.key')
-    certcertpath = os.path.join(cert_dir, 'client.cert')
-
-    # Confluenceページの更新
-    if not os.path.exists(certkeypath) or not os.path.exists(certcertpath):
-        raise FileNotFoundError(f"証明書ファイルが見つかりません: {certkeypath} または {certcertpath}")
-
-    if target_page_id:
-        confluence = Confluence(
-            url=confluence_url,
-            username=aws_id,
-            password=aws_password,
-            verify_ssl=True,
-            cert=(certcertpath, certkeypath)
-        )
-        page = confluence.get_page_by_id(page_id=target_page_id)
-
-        update_confluence_page(
-            confluence=confluence,
-            page_id=target_page_id,
-            body=html_body,
-            title=f"工数表とWeb勤怠の不整合チェック結果 - {vars['YYYY']}/{vars['MM']}",
-            always_update=True
-        )
-
-        for file in files_to_attach:
-            if file:
-                confluence.attach_file(
-                    page_id=target_page_id,
-                    filename=file,
-                    name=os.path.basename(file)
+        # メール送信
+        if to_mail:
+            if dry_run:
+                logger.info("Dry run mode. Email would be sent to:")
+                logger.info(to_mail)
+                logger.info("Email subject:")
+                logger.info("【自動送信】【PXT連絡】工数表⇔Web勤怠相違")
+                logger.info("Email body:")
+                logger.info(html_body)
+            else:
+                send_mail(
+                    to_address=to_mail,
+                    subject="【自動送信】【PXT連絡】工数表⇔Web勤怠相違",
+                    html_body=html_body
                 )
+                logger.info(f"Email sent to {to_mail}")
+
+        certkeypath = os.path.join(cert_dir, 'client.key')
+        certcertpath = os.path.join(cert_dir, 'client.cert')
+
+        # Confluenceページの更新
+        if not os.path.exists(certkeypath) or not os.path.exists(certcertpath):
+            raise FileNotFoundError(f"証明書ファイルが見つかりません: {certkeypath} または {certcertpath}")
+
+        if target_page_id:
+            confluence = Confluence(
+                url=confluence_url,
+                username=aws_id,
+                password=aws_password,
+                verify_ssl=True,
+                cert=(certcertpath, certkeypath)
+            )
+            page = confluence.get_page_by_id(page_id=target_page_id)
+
+            if dry_run:
+                logger.info("Dry run mode. Confluence page would be updated with the following content:")
+                logger.info(f"Page ID: {target_page_id}")
+                logger.info(f"Title: 工数表とWeb勤怠の不整合チェック結果 - {vars['YYYY']}/{vars['MM']}")
+                logger.info("Body:")
+                logger.info(html_body)
+                logger.info("Attachments:")
+                for file in files_to_attach:
+                    if file:
+                        logger.info(f"- {file}")
+            else:
+                if not dry_run:
+                    update_confluence_page(
+                        confluence=confluence,
+                        page_id=target_page_id,
+                        body=html_body,
+                        title=f"工数表とWeb勤怠の不整合チェック結果 - {vars['YYYY']}/{vars['MM']}",
+                        always_update=True
+                )
+
+                for file in files_to_attach:
+                    if file:
+                        confluence.attach_file(
+                            page_id=target_page_id,
+                            filename=file,
+                            name=os.path.basename(file)
+                        )
+
+        logger.info("WorkingTimeChecker finished successfully")
+    except Exception as e:
+        logger.exception(f"エラーが発生しました: {e}")
+        raise
 
 if __name__ == "__main__":
     main()

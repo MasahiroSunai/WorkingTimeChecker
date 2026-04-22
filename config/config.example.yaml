@@ -6,6 +6,7 @@ system:
   timezone: Asia/Tokyo
   toAddress: "your.name@example.com"   # 通知メール送信先
   target_month: auto                   # auto または YYYY-MM（例: 2026-04）
+  dry_run: true                       # true の場合、処理は行わずログ出力のみ
 
 # ======================
 # Confluence

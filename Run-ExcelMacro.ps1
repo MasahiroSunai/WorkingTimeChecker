@@ -5,6 +5,25 @@
 
 $ErrorActionPreference = "Stop"
 
+function Retry-ExcelAction {
+    param (
+        [scriptblock]$Action,
+        [int]$Retry = 10,
+        [int]$SleepMs = 500
+    )
+
+    for ($i = 1; $i -le $Retry; $i++) {
+        try {
+            & $Action
+            return
+        } catch {
+            Write-Host "Retry $i / $Retry : $($_.Exception.Message)"
+            if ($i -eq $Retry) { throw }
+            Start-Sleep -Milliseconds ($SleepMs * $i)
+        }
+    }
+}
+
 Write-Host ">> Excel マクロ実行開始"
 
 # -------------------------------------
@@ -26,9 +45,9 @@ try {
     $env:PYTHONPATH = $rootDir
 
     $json = python -c "
-from config_loader import load_config
-from month_utils import resolve_target_month
-from path_utils import expand_path
+from utils.config_loader import load_config
+from utils.month_utils import resolve_target_month
+from utils.path_utils import expand_path
 import json
 
 config = load_config(r'$configYml')
@@ -137,15 +156,16 @@ try {
         $elapsed = New-TimeSpan -Start $startTime -End (Get-Date)
         Write-Host "[OK] マクロ実行完了: $($elapsed.TotalMinutes) 分"
     }
+    Start-Sleep -Seconds 3
 
     # ---------------------------------
     # 6. 保存
     # ---------------------------------
     try {
         $xlOpenXMLWorkbookMacroEnabled = 52
-        $workbook.SaveAs($excelPath, $xlOpenXMLWorkbookMacroEnabled)
+        Retry-ExcelAction { $workbook.SaveAs($excelPath, $xlOpenXMLWorkbookMacroEnabled) }
     } catch {
-        $workbook.Save()
+        Retry-ExcelAction { $workbook.Save() }
     }
 
     Write-Host "[OK] Excel 保存完了"
@@ -156,12 +176,12 @@ catch {
 }
 finally {
     if ($workbook) {
-        try { $workbook.Close($false) } catch {}
+        Retry-ExcelAction { $workbook.Close($false) }
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null
     }
 
     if ($excelWasCreated -and $excel) {
-        try { $excel.Quit() } catch {}
+        Retry-ExcelAction { $excel.Quit() }
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
     }
 

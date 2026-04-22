@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import totp
+import utils.totp as totp
 import os
 import sys
 import glob
@@ -16,9 +16,12 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from config_loader import load_config
-from month_utils import resolve_target_month
-from path_utils import expand_path
+from utils.config_loader import load_config
+from utils.month_utils import resolve_target_month
+from utils.path_utils import expand_path
+from utils.logger_utils import setup_logger
+
+logger = setup_logger("WebAttendanceDownload")
 
 def get_base_path() -> str:
     # PyInstallerで実行されているかどうかをチェック
@@ -102,8 +105,6 @@ def download_attendance(config, username, password, secret_key):
         driver.implicitly_wait(1)
         driver.find_element(By.XPATH, sel["export"]["export_button"]).click()
 
-        wait_for_download(tmp_download_dir)
-
         download_file = wait_for_download(tmp_download_dir)
         filePath = shutil.move(download_file, os.path.join(download_dir, os.path.basename(download_file)))
         return filePath
@@ -116,25 +117,33 @@ def download_attendance(config, username, password, secret_key):
             shutil.rmtree(tmp_download_dir)
 
 def main():
-    parser = argparse.ArgumentParser(description="AppsFSからWeb勤怠をダウンロード")
-    parser.add_argument("--config", default="config/config.yaml", help="config.yaml のパス")
-    args = parser.parse_args()
-    config = load_config(args.config)
+    logger.info("WebAttendanceDownload start")
 
-    username = os.environ.get("APPS_ID")
-    if not username:
-        raise RuntimeError("AppsFS ID not found")
-    password = os.environ.get("APPS_PASSWORD")
-    if not password:
-        raise RuntimeError("AppsFS Password not found")
-    secret_key = os.environ.get("APPS_TOTP_SECRET")
-    if not secret_key:
-        raise RuntimeError("TOTP Secret not found")
-    
-    vars = resolve_target_month(config)
-    csvPath = expand_path(config["paths"]["web_attendance_file"], vars)
+    try:
+        parser = argparse.ArgumentParser(description="AppsFSからWeb勤怠をダウンロード")
+        parser.add_argument("--config", default="config/config.yaml", help="config.yaml のパス")
+        args = parser.parse_args()
+        config = load_config(args.config)
 
-    shutil.move(download_attendance(config, username, password, secret_key), csvPath)
+        username = os.environ.get("APPS_ID")
+        if not username:
+            raise RuntimeError("AppsFS ID not found")
+        password = os.environ.get("APPS_PASSWORD")
+        if not password:
+            raise RuntimeError("AppsFS Password not found")
+        secret_key = os.environ.get("APPS_TOTP_SECRET")
+        if not secret_key:
+            raise RuntimeError("TOTP Secret not found")
+        
+        vars = resolve_target_month(config)
+        csvPath = expand_path(config["paths"]["web_attendance_file"], vars)
+
+        shutil.move(download_attendance(config, username, password, secret_key), csvPath)
+        logger.info(f"Web勤怠を {csvPath} に保存しました")
+
+    except Exception as e:
+        logger.exception(f"エラーが発生しました: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
