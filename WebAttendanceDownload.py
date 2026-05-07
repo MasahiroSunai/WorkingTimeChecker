@@ -31,20 +31,32 @@ def get_base_path() -> str:
     else:
         # スクリプトの実行ファイルのパスを取得
         return os.path.dirname(os.path.abspath(__file__))
-    
+
 def wait_for_download(tmp_download_dir: str, timeout_second: int = 60) -> str:
     """ダウンロード完了まで待機し、ファイルパスを返す"""
     for i in range(timeout_second + 1):
-        download_fileName = glob.glob(f'{tmp_download_dir}\\*.*')
-        if download_fileName:
-            extension = os.path.splitext(download_fileName[0])
-            if ".crdownload" not in extension[1]:
-                time.sleep(2)
-                return download_fileName[0]
+        files = glob.glob(f'{tmp_download_dir}\\*')
+
+        valid_files = [
+            f for f in files
+            if os.path.splitext(f)[1].lower() not in ('.crdownload', '.tmp')
+        ]
+
+        if len(valid_files) == 1:
+            time.sleep(1)  # 完了直前対策
+            return valid_files[0]
+
+        if len(valid_files) > 1:
+            raise RuntimeError(
+                f"想定外のダウンロードファイル数: {valid_files}"
+            )
+
         if i >= timeout_second:
-            raise Exception("ダウンロードに失敗しました。")
+            raise RuntimeError("ダウンロードに失敗しました。")
+
         time.sleep(1)
-    raise Exception("ダウンロードに失敗しました。")
+
+    raise RuntimeError("ダウンロードに失敗しました。")
 
 def download_attendance(config, username, password, secret_key):
     # Initialize TOTP
@@ -106,14 +118,22 @@ def download_attendance(config, username, password, secret_key):
         driver.find_element(By.XPATH, sel["export"]["export_button"]).click()
 
         download_file = wait_for_download(tmp_download_dir)
+
+        if not os.path.exists(download_file):
+            raise FileNotFoundError(f"ダウンロードファイルが存在しません: {download_file}")
+
         filePath = shutil.move(download_file, os.path.join(download_dir, os.path.basename(download_file)))
         return filePath
-
+    except Exception as e:
+        logger.error(f"Download dir files: {glob.glob(tmp_download_dir + '\\*')}")
+        logger.exception(f"エラーが発生しました: {e}")
+        raise
     finally:
         # Close the browser
         if driver:
             driver.quit()
         if os.path.exists(tmp_download_dir):
+            logger.debug(f"tmp_download_dir cleanup: {tmp_download_dir}")
             shutil.rmtree(tmp_download_dir)
 
 def main():
