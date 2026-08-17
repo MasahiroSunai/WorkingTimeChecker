@@ -21,7 +21,7 @@ confluence:
     url: https://wiki.example.net
     download_page_id: 111111111
     upload_page_id: 222222222
-    # geniie 側は証明書不要な場合あり
+    # geniie 側は証明書不要
 
 # ======================
 # File / Path
@@ -66,7 +66,7 @@ excel:
     # - "工数表_読み込み.工数管理表読み込み"  # 必要に応じて追加
 
 # ======================
-# Selenium（Apps操作用）
+# Selenium　(Apps操作用)
 # ======================
 # Web勤怠画面の構造に依存する要素定義
 # 画面変更があった場合は、コードではなくここを修正する

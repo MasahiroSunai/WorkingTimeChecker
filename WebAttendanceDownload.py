@@ -92,14 +92,24 @@ def download_attendance(config, username, password, secret_key):
         # Navigate to the login page
         driver.get(url)
 
-        # Find the username and password fields and enter the credentials
         driver.find_element(By.XPATH, sel["login"]["username_input"]).send_keys(username)
-        driver.find_element(By.XPATH, sel["login"]["password_input"]).send_keys(password)
+        driver.find_element(By.XPATH, sel["login"]["login_button"]).click()
 
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, sel["login"]["password_input"])
+            )
+        )
+
+        driver.find_element(By.XPATH, sel["login"]["password_input"]).send_keys(password)
         driver.find_element(By.XPATH, sel["login"]["login_button"]).click()
 
         # Wait for the page to load
-        driver.implicitly_wait(2)  # Wait for elements to load
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.XPATH, sel["totp"]["input"])
+            )
+        )
 
         # Find the TOTP field and enter the generated TOTP code
         totp_code = totp_generator.generate_totp()

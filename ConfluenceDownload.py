@@ -36,6 +36,20 @@ def main():
             raise RuntimeError(f"ページ {page_id} のダウンロードに失敗しました")
 
         logger.info(f"Confluence(dndev) ページ {page_id} の添付を {download_dir} に保存しました")
+
+        conf = config["confluence"]["geniie"]
+        confluence = create_confluence(
+            conf,
+            username_env="GENIIE_ID",
+            password_env="GENIIE_PASSWORD",
+        )
+
+        page_id = conf["download_page_id"]
+        if confluence.download_attachments_from_page(page_id=page_id, path=download_dir) is None:
+            raise RuntimeError(f"ページ {page_id} のダウンロードに失敗しました")
+
+        logger.info(f"Confluence(geniie) ページ {page_id} の添付を {download_dir} に保存しました")
+
     except Exception as e:
         logger.exception(f"エラーが発生しました: {e}")
         raise
